@@ -1,6 +1,6 @@
 # NAME
 
-    MySQLTuner 1.7.0 - MySQL High Performance Tuning Script
+    MySQLTuner 1.7.2 - MySQL High Performance Tuning Script
 
 # IMPORTANT USAGE GUIDELINES
 
@@ -11,17 +11,18 @@ You must provide the remote server's total memory when connecting to other serve
 
 # CONNECTION AND AUTHENTIFICATION
 
-    --host <hostname>    Connect to a remote host to perform tests (default: localhost)
-    --socket <socket>    Use a different socket for a local connection
-    --port <port>        Port to use for connection (default: 3306)
-    --user <username>    Username to use for authentication
-    --userenv <envvar>   Name of env variable which contains username to use for authentication
-    --pass <password>    Password to use for authentication
-    --passenv <envvar>   Name of env variable which contains password to use for authentication
-    --mysqladmin <path>  Path to a custom mysqladmin executable
-    --mysqlcmd <path>    Path to a custom mysql executable
-     --defaults-file <path>  Path to a custom .my.cnf
-   =head1 PERFORMANCE AND REPORTING OPTIONS
+    --host <hostname>           Connect to a remote host to perform tests (default: localhost)
+    --socket <socket>           Use a different socket for a local connection
+    --port <port>               Port to use for connection (default: 3306)
+    --user <username>           Username to use for authentication
+    --userenv <envvar>          Name of env variable which contains username to use for authentication
+    --pass <password>           Password to use for authentication
+    --passenv <envvar>          Name of env variable which contains password to use for authentication
+    --mysqladmin <path>         Path to a custom mysqladmin executable
+    --mysqlcmd <path>           Path to a custom mysql executable
+    --defaults-file <path>      Path to a custom .my.cnf
+
+# PERFORMANCE AND REPORTING OPTIONS
 
     --skipsize                  Don't enumerate tables and their types/sizes (default: on)
                                 (Recommended for servers with many tables)
@@ -45,7 +46,7 @@ You must provide the remote server's total memory when connecting to other serve
     --pfstat                    Print Performance schema
     --bannedports               Ports banned separated by comma(,)
     --maxportallowed            Number of ports opened allowed on this hosts
-    --cvefile                   CVE File for vulnerability checks
+    --cvefile <path>            CVE File for vulnerability checks
     --nocolor                   Don't print output in color
     --json                      Print result as JSON string
     --buffers                   Print global and per-thread buffer values
@@ -53,7 +54,8 @@ You must provide the remote server's total memory when connecting to other serve
     --reportfile <path>         Path to a report txt file
     --template   <path>         Path to a template file
     --verbose                   Prints out all options (default: no verbose)
-   =head1 PERLDOC
+
+# PERLDOC
 
 You can find documentation for this module with the perldoc command.
 
@@ -122,7 +124,7 @@ Maintained by Major Hayden (major\\@mhtx.net) - Licensed under GPL
 
 # COPYRIGHT AND LICENSE
 
-Copyright (C) 2006-2015 Major Hayden - major@mhtx.net
+Copyright (C) 2006-2017 Major Hayden - major@mhtx.net
 
 For the latest updates, please visit http://mysqltuner.com/
 
@@ -140,4 +142,4 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
     See the GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with this program.  If not, see <http://www.gnu.org/licenses/>.
+along with this program.  If not, see &lt;http://www.gnu.org/licenses/>.

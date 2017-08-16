@@ -1,5 +1,5 @@
 #!/usr/bin/env perl
-# mysqltuner.pl - Version 1.7.1
+# mysqltuner.pl - Version 1.7.3
 # High Performance MySQL Tuning Script
 # Copyright (C) 2006-2017 Major Hayden - major@mhtx.net
 #
@@ -45,6 +45,7 @@ use warnings;
 use diagnostics;
 use File::Spec;
 use Getopt::Long;
+use Pod::Usage;
 use File::Basename;
 use Cwd 'abs_path';
 
@@ -55,7 +56,7 @@ $Data::Dumper::Pair = " : ";
 #use Env;
 
 # Set up a few variables for use in the script
-my $tunerversion = "1.7.1";
+my $tunerversion = "1.7.3";
 my ( @adjvars, @generalrec );
 
 # Set defaults
@@ -97,7 +98,7 @@ my %opt = (
 );
 
 # Gather the options from the command line
-my $getOptionsCheck = GetOptions(
+GetOptions(
     \%opt,            'nobad',
     'nogood',         'noinfo',
     'debug',          'nocolor',
@@ -119,72 +120,31 @@ my $getOptionsCheck = GetOptions(
     'password=s',     'pfstat',
     'passenv=s',      'userenv=s',
     'defaults-file=s'
-);
+  )
+  or pod2usage(
+    -exitval  => 1,
+    -verbose  => 99,
+    -sections => [
+        "NAME",
+        "IMPORTANT USAGE GUIDELINES",
+        "CONNECTION AND AUTHENTIFICATION",
+        "PERFORMANCE AND REPORTING OPTIONS",
+        "OUTPUT OPTIONS"
+    ]
+  );
 
-#If params are incorrect return help
-if ( $getOptionsCheck ne 1 ) {
-    usage();
-}
-
-if ( defined $opt{'help'} && $opt{'help'} == 1 ) { usage(); }
-
-sub usage {
-
-    # Shown with --help option passed
-    print "   MySQLTuner $tunerversion - MySQL High Performance Tuning Script\n"
-      . "   Bug reports, feature requests, and downloads at http://mysqltuner.com/\n"
-      . "   Maintained by Major Hayden (major\@mhtx.net) - Licensed under GPL\n"
-      . "\n"
-      . "   Important Usage Guidelines:\n"
-      . "      To run the script with the default options, run the script without arguments\n"
-      . "      Allow MySQL server to run for at least 24-48 hours before trusting suggestions\n"
-      . "      Some routines may require root level privileges (script will provide warnings)\n"
-      . "      You must provide the remote server's total memory when connecting to other servers\n"
-      . "\n"
-      . "   Connection and Authentication\n"
-      . "      --host <hostname>    Connect to a remote host to perform tests (default: localhost)\n"
-      . "      --socket <socket>    Use a different socket for a local connection\n"
-      . "      --port <port>        Port to use for connection (default: 3306)\n"
-      . "      --user <username>    Username to use for authentication\n"
-      . "      --userenv <envvar>   Name of env variable which contains username to use for authentication\n"
-      . "      --pass <password>    Password to use for authentication\n"
-      . "      --passenv <envvar>   Name of env variable which contains password to use for authentication\n"
-      . "      --defaults-file <path>  Path to a custom .my.cnf\n"
-      . "      --mysqladmin <path>  Path to a custom mysqladmin executable\n"
-      . "      --mysqlcmd <path>    Path to a custom mysql executable\n" . "\n"
-      . "      --noask              Don't ask password if needed\n" . "\n"
-      . "   Performance and Reporting Options\n"
-      . "      --skipsize           Don't enumerate tables and their types/sizes (default: on)\n"
-      . "                           (Recommended for servers with many tables)\n"
-      . "      --skippassword       Don't perform checks on user passwords(default: off)\n"
-      . "      --checkversion       Check for updates to MySQLTuner (default: don't check)\n"
-      . "      --updateversion      Check for updates to MySQLTuner and update when newer version is available (default: don't check)\n"
-      . "      --forcemem <size>    Amount of RAM installed in megabytes\n"
-      . "      --forceswap <size>   Amount of swap memory configured in megabytes\n"
-      . "      --passwordfile <path>Path to a password file list(one password by line)\n"
-      . "   Output Options:\n"
-      . "      --silent             Don't output anything on screen\n"
-      . "      --nogood             Remove OK responses\n"
-      . "      --nobad              Remove negative/suggestion responses\n"
-      . "      --noinfo             Remove informational responses\n"
-      . "      --debug              Print debug information\n"
-      . "      --dbstat             Print database information\n"
-      . "      --idxstat            Print index information\n"
-      . "      --sysstat            Print system information\n"
-      . "      --pfstat             Print Performance schema information\n"
-      . "      --bannedports        Ports banned separated by comma(,)\n"
-      . "      --maxportallowed     Number of ports opened allowed on this hosts\n"
-      . "      --cvefile            CVE File for vulnerability checks\n"
-      . "      --nocolor            Don't print output in color\n"
-      . "      --json               Print result as JSON string\n"
-      . "      --prettyjson         Print result as human readable JSON\n"
-      . "      --buffers            Print global and per-thread buffer values\n"
-      . "      --outputfile <path>  Path to a output txt file\n" . "\n"
-      . "      --reportfile <path>  Path to a report txt file\n" . "\n"
-      . "      --template   <path>  Path to a template file\n" . "\n"
-      . "      --verbose            Prints out all options (default: no verbose) \n"
-      . "\n";
-    exit 0;
+if ( defined $opt{'help'} && $opt{'help'} == 1 ) {
+    pod2usage(
+        -exitval  => 0,
+        -verbose  => 99,
+        -sections => [
+            "NAME",
+            "IMPORTANT USAGE GUIDELINES",
+            "CONNECTION AND AUTHENTIFICATION",
+            "PERFORMANCE AND REPORTING OPTIONS",
+            "OUTPUT OPTIONS"
+        ]
+    );
 }
 
 my $devnull = File::Spec->devnull();
@@ -300,9 +260,10 @@ sub infoprinthcmd {
     infoprintcmd "$_[1]";
 }
 
-# Calculates the number of phyiscal cores considering HyperThreading 
+# Calculates the number of phyiscal cores considering HyperThreading
 sub cpu_cores {
-    my $cntCPU = `awk -F: '/^core id/ && !P[\$2] { CORES++; P[\$2]=1 }; /^physical id/ && !N[\$2] { CPUs++; N[\$2]=1 };  END { print CPUs*CORES }' /proc/cpuinfo`;
+    my $cntCPU =
+`awk -F: '/^core id/ && !P[\$2] { CORES++; P[\$2]=1 }; /^physical id/ && !N[\$2] { CPUs++; N[\$2]=1 };  END { print CPUs*CORES }' /proc/cpuinfo`;
     return ( $cntCPU == 0 ? `nproc` : $cntCPU );
 }
 
@@ -537,7 +498,8 @@ sub validate_tuner_version {
     }
 
     my $update;
-    my $url = "https://raw.githubusercontent.com/major/MySQLTuner-perl/master/mysqltuner.pl";
+    my $url =
+"https://raw.githubusercontent.com/major/MySQLTuner-perl/master/mysqltuner.pl";
     my $httpcli = get_http_cli();
     if ( $httpcli =~ /curl$/ ) {
         debugprint "$httpcli is available.";
@@ -612,9 +574,9 @@ sub update_tuner_version {
             debugprint "$httpcli is available.";
 
             debugprint
-              "$httpcli -qe timestamping=off -t 1 -T 3 -O $script '$url$script'";
+"$httpcli -qe timestamping=off -t 1 -T 3 -O $script '$url$script'";
             $update =
-              `$httpcli -qe timestamping=off -t 1 -T 3 -O $script '$url$script'`;
+`$httpcli -qe timestamping=off -t 1 -T 3 -O $script '$url$script'`;
             chomp($update);
 
             if ( -s $script eq 0 ) {
@@ -721,7 +683,7 @@ sub mysql_setup {
     if ( $opt{socket} ne 0 ) {
         $remotestring = " -S $opt{socket} -P $opt{port}";
     }
-    
+
     # Are we being asked to connect to a remote server?
     if ( $opt{host} ne 0 ) {
         chomp( $opt{host} );
@@ -739,8 +701,9 @@ sub mysql_setup {
         if ( ( $opt{host} ne "127.0.0.1" ) && ( $opt{host} ne "localhost" ) ) {
             $doremote = 1;
         }
-    } else {
-      $opt{host}='127.0.0.1';
+    }
+    else {
+        $opt{host} = '127.0.0.1';
     }
 
     # Did we already get a username without password on the command line?
@@ -869,6 +832,7 @@ sub mysql_setup {
         }
     }
     else {
+
         # It's not Plesk or debian, we should try a login
         debugprint "$mysqladmincmd $remotestring ping 2>&1";
         my $loginstatus = `$mysqladmincmd $remotestring ping 2>&1`;
@@ -986,6 +950,37 @@ sub select_one {
     debugprint "select_array: return code : $?";
     chomp($result);
     return $result;
+}
+
+# MySQL Request one
+sub select_one_g {
+    my $pattern = shift;
+
+    my $req = shift;
+    debugprint "PERFORM: $req ";
+    my @result = `$mysqlcmd $mysqllogin -re "\\w$req\\G" 2>>/dev/null`;
+    if ( $? != 0 ) {
+        badprint "failed to execute: $req";
+        badprint "FAIL Execute SQL / return code: $?";
+        debugprint "CMD    : $mysqlcmd";
+        debugprint "OPTIONS: $mysqllogin";
+        debugprint `$mysqlcmd $mysqllogin -Bse "$req" 2>&1`;
+
+        #exit $?;
+    }
+    debugprint "select_array: return code : $?";
+    chomp(@result);
+    return ( grep { /$pattern/ } @result )[0];
+}
+
+sub select_str_g {
+    my $pattern = shift;
+
+    my $req = shift;
+    my $str = select_one_g $pattern, $req;
+    my @val = split /:/, $str;
+    shift @val;
+    return trim(@val);
 }
 
 sub get_tuning_info {
@@ -1467,7 +1462,8 @@ sub get_kernel_info {
         badprint
           "Swappiness is > 10, please consider having a value lower than 10";
         push @generalrec, "setup swappiness lower or equals to 10";
-        push @adjvars, 'vm.swappiness <= 10 (echo 10 > /proc/sys/vm/swappiness)';
+        push @adjvars,
+          'vm.swappiness <= 10 (echo 10 > /proc/sys/vm/swappiness)';
     }
     else {
         infoprint "Swappiness is < 10.";
@@ -1822,7 +1818,7 @@ sub get_replication_status {
           "This replication slave is not running but seems to be configured.";
     }
     if (   defined($io_running)
-        && $io_running =~ /yes/i
+        && $io_running  =~ /yes/i
         && $sql_running =~ /yes/i )
     {
         if ( $myvar{'read_only'} eq 'OFF' ) {
@@ -1873,7 +1869,8 @@ sub mysql_version_ge {
     return
          int($mysqlvermajor) > int($maj)
       || ( int($mysqlvermajor) == int($maj) && int($mysqlverminor) > int($min) )
-      || ( int($mysqlverminor) == int($min)
+      || ( int($mysqlvermajor) == int($maj)
+        && int($mysqlverminor) == int($min)
         && int($mysqlvermicro) >= int($mic) );
 }
 
@@ -1885,7 +1882,8 @@ sub mysql_version_le {
     return
          int($mysqlvermajor) < int($maj)
       || ( int($mysqlvermajor) == int($maj) && int($mysqlverminor) < int($min) )
-      || ( int($mysqlverminor) == int($min)
+      || ( int($mysqlvermajor) == int($maj)
+        && int($mysqlverminor) == int($min)
         && int($mysqlvermicro) <= int($mic) );
 }
 
@@ -2088,7 +2086,7 @@ sub check_storage_engines {
             debugprint "Data dump " . Dumper(@$tbl);
             my ( $engine, $size, $datafree ) = @$tbl;
             next if $engine eq 'NULL';
-            $size     = 0 if $size eq 'NULL';
+            $size     = 0 if $size     eq 'NULL';
             $datafree = 0 if $datafree eq 'NULL';
             if ( defined $enginestats{$engine} ) {
                 $enginestats{$engine} += $size;
@@ -2144,12 +2142,14 @@ sub check_storage_engines {
             "Run OPTIMIZE TABLE to defragment tables for better performance" );
         my $total_free = 0;
         foreach my $table_line ( @{ $result{'Tables'}{'Fragmented tables'} } ) {
-            my ( $table_name, $data_free ) = split( /\s+/, $table_line );
+            my ( $full_table_name, $data_free ) = split( /\s+/, $table_line );
             $data_free = 0 if ( !defined($data_free) or $data_free eq '' );
             $data_free = $data_free / 1024 / 1024;
             $total_free += $data_free;
+            my ( $table_schema, $table_name ) = split( /\./, $full_table_name );
             push( @generalrec,
-                "  OPTIMIZE TABLE `$table_name`; -- can free $data_free MB" );
+"  OPTIMIZE TABLE `$table_schema`.`$table_name`; -- can free $data_free MB"
+            );
         }
         push( @generalrec,
             "Total freed space after theses OPTIMIZE TABLE : $total_free Mb" );
@@ -2325,7 +2325,7 @@ sub calculations {
                           $myvar{'key_cache_block_size'}
                     ) / $myvar{'key_buffer_size'}
                 )
-            ) * 100
+              ) * 100
         );
     }
     else {
@@ -2366,8 +2366,9 @@ sub calculations {
     }
 
     if ( $mystat{'Key_write_requests'} > 0 ) {
-        $mycalc{'pct_wkeys_from_mem'} = sprintf(
-            "%.1f",( ($mystat{'Key_writes'} / $mystat{'Key_write_requests'} ) * 100 ) );
+        $mycalc{'pct_wkeys_from_mem'} = sprintf( "%.1f",
+            ( ( $mystat{'Key_writes'} / $mystat{'Key_write_requests'} ) * 100 )
+        );
     }
     else {
         $mycalc{'pct_wkeys_from_mem'} = 0;
@@ -2411,14 +2412,14 @@ sub calculations {
             (
                 $mystat{'Qcache_hits'} /
                   ( $mystat{'Com_select'} + $mystat{'Qcache_hits'} )
-            ) * 100
+              ) * 100
         );
         if ( $myvar{'query_cache_size'} ) {
             $mycalc{'pct_query_cache_used'} = sprintf(
                 "%.1f",
                 100 - (
                     $mystat{'Qcache_free_memory'} / $myvar{'query_cache_size'}
-                ) * 100
+                  ) * 100
             );
         }
         if ( $mystat{'Qcache_lowmem_prunes'} == 0 ) {
@@ -2643,7 +2644,7 @@ sub mysql_stats {
 
         if ( defined $myvar{'query_cache_type'} ) {
             infoprint "Query Cache Buffers";
-            infoprint " +-- Query Cache: "
+            infoprint " +-- Query Cache: " 
               . $myvar{'query_cache_type'} . " - "
               . (
                 $myvar{'query_cache_type'} eq 0 |
@@ -3146,6 +3147,7 @@ sub mysql_myisam {
         }
     }
     else {
+
         # No queries have run that would use keys
         debugprint "Key buffer used: $mycalc{'pct_key_buffer_used'}% ("
           . hr_num(
@@ -3205,6 +3207,7 @@ sub mysql_myisam {
             }
         }
         else {
+
             # No queries have run that would use keys
             debugprint "Key buffer size / total MyISAM indexes: "
               . hr_bytes( $myvar{'key_buffer_size'} ) . "/"
@@ -3229,6 +3232,7 @@ sub mysql_myisam {
             }
         }
         else {
+
             # No queries have run that would use keys
             debugprint
               "Write Key buffer hit rate: $mycalc{'pct_wkeys_from_mem'}% ("
@@ -3325,7 +3329,8 @@ sub mysqsl_pfs {
                 "Performance should be activated for better diagnostics" );
             push( @adjvars, "performance_schema = ON enable PFS" );
         }
-        else {
+    } else {
+         if ( mysql_version_le( 5, 5 ) ) {
             push( @generalrec,
 "Performance shouldn't be activated for MySQL and MariaDB 5.5 and lower version"
             );
@@ -3337,9 +3342,9 @@ sub mysqsl_pfs {
 
     unless ( grep /^sys$/, select_array("SHOW DATABASES") ) {
         infoprint "Sys schema isn't installed.";
-        push( @generalrec,
+         push( @generalrec,
 "Consider installing Sys schema from https://github.com/mysql/mysql-sys"
-        );
+        ) unless ( mysql_version_le( 5, 5 ) );
         return;
     }
     else {
@@ -4906,8 +4911,9 @@ sub mariadb_xtradb {
         return;
     }
     infoprint "XtraDB is enabled.";
+    infoprint "Note that MariaDB 10.2 makes use of InnoDB, not XtraDB."
 
-    # All is to done here
+      # All is to done here
 }
 
 # Recommendations for RocksDB
@@ -4970,6 +4976,8 @@ sub get_wsrep_options {
     return () unless defined $myvar{'wsrep_provider_options'};
 
     my @galera_options = split /;/, $myvar{'wsrep_provider_options'};
+    my $wsrep_slave_threads = $myvar{'wsrep_slave_threads'};
+    push @galera_options, ' wsrep_slave_threads = '.$wsrep_slave_threads;
     @galera_options = remove_cr @galera_options;
     @galera_options = remove_empty @galera_options;
     debugprint Dumper( \@galera_options );
@@ -5039,11 +5047,11 @@ group by c.table_schema,c.table_name
 having sum(if(c.column_key in ('PRI','UNI'), 1,0)) = 0"
     );
 
-    if (   get_wsrep_option('wsrep_slave_threads') > cpu_cores * 4
-        or get_wsrep_option('wsrep_slave_threads') < cpu_cores * 3 )
+    if (   get_wsrep_option('wsrep_slave_threads') > (cpu_cores) *4
+        or get_wsrep_option('wsrep_slave_threads') < (cpu_cores) *3 )
     {
         badprint
-          "wsrep_slave_threads is not equal to 2, 3 or 4 times number of CPU(s)";
+"wsrep_slave_threads is not equal to 2, 3 or 4 times number of CPU(s)";
         push @adjvars, "wsrep_slave_threads= Nb of Core CPU * 4";
     }
     else {
@@ -5056,43 +5064,55 @@ having sum(if(c.column_key in ('PRI','UNI'), 1,0)) = 0"
     {
         badprint "gcs.limit should be equal to 5 * wsrep_slave_threads";
         push @adjvars, "gcs.limit= wsrep_slave_threads * 5";
-    } else {
+    }
+    else {
         goodprint "gcs.limit should be equal to 5 * wsrep_slave_threads";
     }
 
-    if (get_wsrep_option('wsrep_slave_threads') > 1) {
-        infoprint "wsrep parallel slave can cause frequent inconsistency crash.";
-        push @adjvars, "Set wsrep_slave_threads to 1 in case of HA_ERR_FOUND_DUPP_KEY crash on slave";
+    if ( get_wsrep_option('wsrep_slave_threads') > 1 ) {
+        infoprint
+          "wsrep parallel slave can cause frequent inconsistency crash.";
+        push @adjvars,
+"Set wsrep_slave_threads to 1 in case of HA_ERR_FOUND_DUPP_KEY crash on slave";
+
         # check options for parallel slave
-        if (get_wsrep_option('wsrep_slave_FK_checks') eq "OFF") {
+        if ( get_wsrep_option('wsrep_slave_FK_checks') eq "OFF" ) {
             badprint "wsrep_slave_FK_checks is off with parallel slave";
-            push @adjvars, "wsrep_slave_FK_checks should be ON when using parallel slave";
+            push @adjvars,
+              "wsrep_slave_FK_checks should be ON when using parallel slave";
         }
+
         # wsrep_slave_UK_checks seems useless in MySQL source code
-        if ($myvar{'innodb_autoinc_lock_mode'} != 2) {
-            badprint "innodb_autoinc_lock_mode is incorrect with parallel slave";
-            push @adjvars, "innodb_autoinc_lock_mode should be 2 when using parallel slave";
+        if ( $myvar{'innodb_autoinc_lock_mode'} != 2 ) {
+            badprint
+              "innodb_autoinc_lock_mode is incorrect with parallel slave";
+            push @adjvars,
+              "innodb_autoinc_lock_mode should be 2 when using parallel slave";
         }
     }
-    
-    if (get_wsrep_option('gcs.fc_limit') != $myvar{'wsrep_slave_threads'} * 5 ) {
+
+    if ( get_wsrep_option('gcs.fc_limit') != $myvar{'wsrep_slave_threads'} * 5 )
+    {
         badprint "gcs.fc_limit should be equal to 5 * wsrep_slave_threads";
         push @adjvars, "gcs.fc_limit= wsrep_slave_threads * 5";
-    } else {
+    }
+    else {
         goodprint "gcs.fc_limit is equal to 5 * wsrep_slave_threads";
     }
-    
-    if (get_wsrep_option('gcs.fc_factor') != 0.8 ) {
+
+    if ( get_wsrep_option('gcs.fc_factor') != 0.8 ) {
         badprint "gcs.fc_factor should be equal to 0.8";
         push @adjvars, "gcs.fc_factor=0.8";
     }
     else {
         goodprint "gcs.fc_factor is equal to 0.8";
     }
-   if ( get_wsrep_option('wsrep_flow_control_paused') > 0.02 ) {
+    if ( get_wsrep_option('wsrep_flow_control_paused') > 0.02 ) {
         badprint "Fraction of time node pause flow control > 0.02";
-    } else {
-        goodprint "Flow control fraction seems to be OK (wsrep_flow_control_paused<=0.02)";
+    }
+    else {
+        goodprint
+"Flow control fraction seems to be OK (wsrep_flow_control_paused<=0.02)";
     }
 
     if ( scalar(@primaryKeysNbTables) > 0 ) {
@@ -5101,7 +5121,8 @@ having sum(if(c.column_key in ('PRI','UNI'), 1,0)) = 0"
             badprint "\t$badtable";
             push @{ $result{'Tables without PK'} }, $badtable;
         }
-    } else {
+    }
+    else {
         goodprint "All tables get a primary key";
     }
     my @nonInnoDBTables = select_array(
@@ -5114,19 +5135,22 @@ having sum(if(c.column_key in ('PRI','UNI'), 1,0)) = 0"
         foreach my $badtable (@nonInnoDBTables) {
             badprint "\t$badtable";
         }
-    } else {
+    }
+    else {
         goodprint "All tables are InnoDB tables";
     }
     if ( $myvar{'binlog_format'} ne 'ROW' ) {
         badprint "Binlog format should be in ROW mode.";
         push @adjvars, "binlog_format = ROW";
-    } else {
+    }
+    else {
         goodprint "Binlog format is in ROW mode.";
     }
     if ( $myvar{'innodb_flush_log_at_trx_commit'} != 0 ) {
         badprint "InnoDB flush log at each commit should be disabled.";
         push @adjvars, "innodb_flush_log_at_trx_commit = 0";
-    } else {
+    }
+    else {
         goodprint "InnoDB flush log at each commit is disabled for Galera.";
     }
 
@@ -5326,9 +5350,7 @@ sub mysql_innodb {
         }
         if ( defined $myvar{'innodb_log_file_size'} ) {
             infoprint " +-- InnoDB Log File Size: "
-              . hr_bytes( $myvar{'innodb_log_file_size'} ) . "("
-              . $mycalc{'innodb_log_size_pct'}
-              . " % of buffer pool)";
+              . hr_bytes( $myvar{'innodb_log_file_size'} );
         }
         if ( defined $myvar{'innodb_log_files_in_group'} ) {
             infoprint " +-- InnoDB Log File In Group: "
@@ -5337,7 +5359,9 @@ sub mysql_innodb {
         if ( defined $myvar{'innodb_log_files_in_group'} ) {
             infoprint " +-- InnoDB Total Log File Size: "
               . hr_bytes( $myvar{'innodb_log_files_in_group'} *
-                  $myvar{'innodb_log_file_size'} );
+                  $myvar{'innodb_log_file_size'} ) . "("
+                  . $mycalc{'innodb_log_size_pct'}
+                  . " % of buffer pool)";
         }
         if ( defined $myvar{'innodb_log_buffer_size'} ) {
             infoprint " +-- InnoDB Log Buffer: "
@@ -5390,18 +5414,17 @@ sub mysql_innodb {
           . $myvar{'innodb_log_files_in_group'} . "/"
           . hr_bytes( $myvar{'innodb_buffer_pool_size'} )
           . " should be equal 25%";
-        push(
-            @adjvars,
-"innodb_log_file_size * innodb_log_files_in_group should be equals to 1/4 of buffer pool size (="
+        push( @adjvars,
+                "innodb_log_file_size should be (="
               . hr_bytes_rnd(
-                $myvar{'innodb_buffer_pool_size'} *
+                $myvar{'innodb_buffer_pool_size'} /
                   $myvar{'innodb_log_files_in_group'} / 4
               )
-              . ") if possible."
+              . ") if possible, so InnoDB total log files size equals to 25% of buffer pool size."
         );
     }
     else {
-        goodprint "InnoDB log file size / InnoDB Buffer pool size: "
+        goodprint "Ratio InnoDB log file size / InnoDB Buffer pool size: "
           . hr_bytes( $myvar{'innodb_log_file_size'} ) . " * "
           . $myvar{'innodb_log_files_in_group'} . "/"
           . hr_bytes( $myvar{'innodb_buffer_pool_size'} )
@@ -5577,13 +5600,15 @@ sub mysql_databases {
         return;
     }
 
-    my @dblist = select_array("SHOW DATABASES;");
+    my @dblist = select_array(
+"SELECT DISTINCT TABLE_SCHEMA FROM information_schema.TABLES WHERE TABLE_SCHEMA NOT IN ( 'mysql', 'performance_schema', 'information_schema', 'sys' );"
+    );
     infoprint "There is " . scalar(@dblist) . " Database(s).";
     my @totaldbinfo = split /\s/,
       select_one(
-"SELECT SUM(TABLE_ROWS), SUM(DATA_LENGTH), SUM(INDEX_LENGTH) , SUM(DATA_LENGTH+INDEX_LENGTH), COUNT(TABLE_NAME),COUNT(DISTINCT(TABLE_COLLATION)),COUNT(DISTINCT(ENGINE)) FROM information_schema.TABLES WHERE TABLE_SCHEMA NOT IN ( 'mysql' );"
+"SELECT SUM(TABLE_ROWS), SUM(DATA_LENGTH), SUM(INDEX_LENGTH) , SUM(DATA_LENGTH+INDEX_LENGTH), COUNT(TABLE_NAME),COUNT(DISTINCT(TABLE_COLLATION)),COUNT(DISTINCT(ENGINE)) FROM information_schema.TABLES WHERE TABLE_SCHEMA NOT IN ( 'mysql', 'performance_schema', 'information_schema', 'sys' );"
       );
-    infoprint "All Databases:";
+    infoprint "All User Databases:";
     infoprint " +-- TABLE : "
       . ( $totaldbinfo[4] eq 'NULL' ? 0 : $totaldbinfo[4] ) . "";
     infoprint " +-- ROWS  : "
@@ -5621,15 +5646,6 @@ sub mysql_databases {
     print "\n" unless ( $opt{'silent'} or $opt{'json'} );
 
     foreach (@dblist) {
-        chomp($_);
-        if (   $_ eq "information_schema"
-            or $_ eq "performance_schema"
-            or $_ eq "mysql"
-            or $_ eq "" )
-        {
-            next;
-        }
-
         my @dbinfo = split /\s/,
           select_one(
 "SELECT TABLE_SCHEMA, SUM(TABLE_ROWS), SUM(DATA_LENGTH), SUM(INDEX_LENGTH) , SUM(DATA_LENGTH+INDEX_LENGTH), COUNT(DISTINCT ENGINE),COUNT(TABLE_NAME),COUNT(DISTINCT(TABLE_COLLATION)),COUNT(DISTINCT(ENGINE)) FROM information_schema.TABLES WHERE TABLE_SCHEMA='$_' GROUP BY TABLE_SCHEMA ORDER BY TABLE_SCHEMA"
@@ -5749,6 +5765,65 @@ sub mysql_databases {
 
 }
 
+# Recommendations for database columns
+sub mysql_tables {
+    return if ( $opt{dbstat} == 0 );
+
+    subheaderprint "Table Column Metrics";
+    unless ( mysql_version_ge( 5, 5 ) ) {
+        infoprint
+"Skip Database metrics from information schema missing in this version";
+        return;
+    }
+    my @dblist = select_array(
+"SELECT DISTINCT TABLE_SCHEMA FROM information_schema.TABLES WHERE TABLE_SCHEMA NOT IN ( 'mysql', 'performance_schema', 'information_schema', 'sys' );"
+    );
+    foreach (@dblist) {
+        my $dbname = $_;
+        next unless defined $_;
+        infoprint "Database: " . $_ . "";
+        my @dbtable = select_array(
+"SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='$dbname' AND TABLE_TYPE='BASE TABLE' ORDER BY TABLE_NAME"
+        );
+        foreach (@dbtable) {
+            my $tbname = $_;
+            infoprint " +-- TABLE: $tbname";
+            my @tbcol = select_array(
+"SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$dbname' AND TABLE_NAME='$tbname'"
+            );
+            foreach (@tbcol) {
+                my $ctype = select_one(
+"SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$dbname' AND TABLE_NAME='$tbname' AND COLUMN_NAME='$_' "
+                );
+                my $isnull = select_one(
+"SELECT IS_NULLABLE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$dbname' AND TABLE_NAME='$tbname' AND COLUMN_NAME='$_' "
+                );
+                infoprint "     +-- Column $tbname.$_:";
+                my $current_type =
+                  uc($ctype) . ( $isnull eq 'NO' ? " NOT NULL" : "" );
+                my $optimal_type = select_str_g( "Optimal_fieldtype",
+                    "SELECT $_ FROM $dbname.$tbname PROCEDURE ANALYSE(100000)"
+                );
+
+                if ( $current_type ne $optimal_type ) {
+                    infoprint "      Current Fieldtype: $current_type";
+                    infoprint "      Optimal Fieldtype: $optimal_type";
+                    badprint
+"Consider changing type for column $_ in table $dbname.$tbname";
+                    push( @generalrec,
+                        "ALTER TABLE $dbname.$tbname MODIFY $_ $optimal_type;"
+                    );
+
+                }
+                else {
+                    goodprint "$dbname.$tbname ($_) type: $current_type";
+                }
+            }
+        }
+
+    }
+}
+
 # Recommendations for Indexes metrics
 sub mysql_indexes {
     return if ( $opt{idxstat} == 0 );
@@ -5815,13 +5890,13 @@ ENDSQL
         infoprint " +-- TYPE        : " . $info[6];
         infoprint " +-- SELECTIVITY : " . $info[7] . "%";
 
-        $result{'Indexes'}{ $info[1] }{'Column'}            = $info[0];
-        $result{'Indexes'}{ $info[1] }{'Sequence number'}   = $info[2];
-        $result{'Indexes'}{ $info[1] }{'Number of column'}  = $info[3];
-        $result{'Indexes'}{ $info[1] }{'Cardinality'}       = $info[4];
-        $result{'Indexes'}{ $info[1] }{'Row number'}        = $info[5];
-        $result{'Indexes'}{ $info[1] }{'Index Type'}        = $info[6];
-        $result{'Indexes'}{ $info[1] }{'Selectivity'}       = $info[7];
+        $result{'Indexes'}{ $info[1] }{'Column'}           = $info[0];
+        $result{'Indexes'}{ $info[1] }{'Sequence number'}  = $info[2];
+        $result{'Indexes'}{ $info[1] }{'Number of column'} = $info[3];
+        $result{'Indexes'}{ $info[1] }{'Cardinality'}      = $info[4];
+        $result{'Indexes'}{ $info[1] }{'Row number'}       = $info[5];
+        $result{'Indexes'}{ $info[1] }{'Index Type'}       = $info[6];
+        $result{'Indexes'}{ $info[1] }{'Selectivity'}      = $info[7];
         if ( $info[7] < 25 ) {
             badprint "$info[1] has a low selectivity";
         }
@@ -5917,6 +5992,7 @@ if ( $opt{'template'} ne 0 ) {
     $templateModel = file2string( $opt{'template'} );
 }
 else {
+
     # DEFAULT REPORT TEMPLATE
     $templateModel = <<'END_TEMPLATE';
 <!DOCTYPE html>
@@ -5997,7 +6073,8 @@ sub which {
 # ---------------------------------------------------------------------------
 # BEGIN 'MAIN'
 # ---------------------------------------------------------------------------
-headerprint;               # Header Print
+headerprint;    # Header Print
+
 validate_tuner_version;    # Check last version
 mysql_setup;               # Gotta login first
 os_setup;                  # Set up some OS variables
@@ -6010,6 +6087,8 @@ system_recommendations;    # avoid to many service on the same host
 log_file_recommandations;  # check log file content
 check_storage_engines;     # Show enabled storage engines
 mysql_databases;           # Show informations about databases
+mysql_tables;              # Show informations about table column
+
 mysql_indexes;             # Show informations about indexes
 security_recommendations;  # Display some security recommendations
 cve_recommendations;       # Display related CVE
@@ -6037,13 +6116,14 @@ close_outputfile;          # Close reportfile if needed
 1;
 
 __END__
+
 =pod
 
 =encoding UTF-8
 
 =head1 NAME
 
- MySQLTuner 1.7.1 - MySQL High Performance Tuning Script
+ MySQLTuner 1.7.3 - MySQL High Performance Tuning Script
 
 =head1 IMPORTANT USAGE GUIDELINES
 
@@ -6054,16 +6134,17 @@ You must provide the remote server's total memory when connecting to other serve
 
 =head1 CONNECTION AND AUTHENTIFICATION
 
- --host <hostname>    Connect to a remote host to perform tests (default: localhost)
- --socket <socket>    Use a different socket for a local connection
- --port <port>        Port to use for connection (default: 3306)
- --user <username>    Username to use for authentication
- --userenv <envvar>   Name of env variable which contains username to use for authentication
- --pass <password>    Password to use for authentication
- --passenv <envvar>   Name of env variable which contains password to use for authentication
- --mysqladmin <path>  Path to a custom mysqladmin executable
- --mysqlcmd <path>    Path to a custom mysql executable
-  --defaults-file <path>  Path to a custom .my.cnf
+ --host <hostname>           Connect to a remote host to perform tests (default: localhost)
+ --socket <socket>           Use a different socket for a local connection
+ --port <port>               Port to use for connection (default: 3306)
+ --user <username>           Username to use for authentication
+ --userenv <envvar>          Name of env variable which contains username to use for authentication
+ --pass <password>           Password to use for authentication
+ --passenv <envvar>          Name of env variable which contains password to use for authentication
+ --mysqladmin <path>         Path to a custom mysqladmin executable
+ --mysqlcmd <path>           Path to a custom mysql executable
+ --defaults-file <path>      Path to a custom .my.cnf
+
 =head1 PERFORMANCE AND REPORTING OPTIONS
 
  --skipsize                  Don't enumerate tables and their types/sizes (default: on)
@@ -6088,7 +6169,7 @@ You must provide the remote server's total memory when connecting to other serve
  --pfstat                    Print Performance schema
  --bannedports               Ports banned separated by comma(,)
  --maxportallowed            Number of ports opened allowed on this hosts
- --cvefile                   CVE File for vulnerability checks
+ --cvefile <path>            CVE File for vulnerability checks
  --nocolor                   Don't print output in color
  --json                      Print result as JSON string
  --buffers                   Print global and per-thread buffer values
@@ -6096,6 +6177,7 @@ You must provide the remote server's total memory when connecting to other serve
  --reportfile <path>         Path to a report txt file
  --template   <path>         Path to a template file
  --verbose                   Prints out all options (default: no verbose)
+
 =head1 PERLDOC
 
 You can find documentation for this module with the perldoc command.
@@ -6271,7 +6353,7 @@ L<https://github.com/major/MySQLTuner-perl>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2006-2015 Major Hayden - major@mhtx.net
+Copyright (C) 2006-2017 Major Hayden - major@mhtx.net
 
 For the latest updates, please visit http://mysqltuner.com/
 
