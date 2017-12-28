@@ -1,5 +1,5 @@
 #!/usr/bin/env perl
-# mysqltuner.pl - Version 1.7.3
+# mysqltuner.pl - Version 1.7.4
 # High Performance MySQL Tuning Script
 # Copyright (C) 2006-2017 Major Hayden - major@mhtx.net
 #
@@ -56,7 +56,7 @@ $Data::Dumper::Pair = " : ";
 #use Env;
 
 # Set up a few variables for use in the script
-my $tunerversion = "1.7.3";
+my $tunerversion = "1.7.4";
 my ( @adjvars, @generalrec );
 
 # Set defaults
@@ -66,7 +66,7 @@ my %opt = (
     "nogood"         => 0,
     "noinfo"         => 0,
     "debug"          => 0,
-    "nocolor"        => 0,
+    "nocolor"        => ( ! -t STDOUT ),
     "forcemem"       => 0,
     "forceswap"      => 0,
     "host"           => 0,
@@ -75,6 +75,7 @@ my %opt = (
     "user"           => 0,
     "pass"           => 0,
     "password"       => 0,
+    "ssl-ca"         => 0,
     "skipsize"       => 0,
     "checkversion"   => 0,
     "updateversion"  => 0,
@@ -119,7 +120,7 @@ GetOptions(
     'verbose',        'sysstat',
     'password=s',     'pfstat',
     'passenv=s',      'userenv=s',
-    'defaults-file=s'
+    'defaults-file=s','ssl-ca=s'
   )
   or pod2usage(
     -exitval  => 1,
@@ -706,6 +707,19 @@ sub mysql_setup {
         $opt{host} = '127.0.0.1';
     }
 
+    if ( $opt{'ssl-ca'} ne 0 ) {
+      if ( -e -r -f $opt{'ssl-ca'} ) {
+        $remotestring .= " --ssl-ca=$opt{'ssl-ca'}";
+        infoprint "Will connect using ssl public key passed on the command line";
+        return 1;
+      }
+      else {
+        badprint
+          "Attempted to use passed ssl public key, but it was not found or could not be read";
+        exit 1;
+      }
+    }
+
     # Did we already get a username without password on the command line?
     if ( $opt{user} ne 0 and $opt{pass} eq 0 ) {
         $mysqllogin = "-u $opt{user} " . $remotestring;
@@ -801,7 +815,7 @@ sub mysql_setup {
             exit 1;
         }
     }
-    elsif ( -r "/etc/mysql/debian.cnf" and $doremote == 0 ) {
+    elsif ( -r "/etc/mysql/debian.cnf" and $doremote == 0 and $opt{'defaults-file'} eq '' ) {
 
         # We have a debian maintenance account, use it
         $mysqllogin = "--defaults-file=/etc/mysql/debian.cnf";
@@ -813,11 +827,12 @@ sub mysql_setup {
         }
         else {
             badprint
-"Attempted to use login credentials from debian maintenance account, but they failed.";
+"Attempted to use login credentials from debian maintena
+nce account, but they failed.";
             exit 1;
         }
     }
-    elsif ( $opt{'defaults-file'} ne 0 and -r "$opt{'defaults-file'}" ) {
+    elsif ( $opt{'defaults-file'} ne '' and -r "$opt{'defaults-file'}" ) {
 
         # defaults-file
         debugprint "defaults file detected: $opt{'defaults-file'}";
@@ -1133,7 +1148,26 @@ sub get_basic_passwords {
     return get_file_contents(shift);
 }
 
+sub get_log_file_real_path {
+    my $file = shift;
+    my $hostname = shift;
+    my $datadir = shift;
+    if ( -f "$file" ) {
+        return $file;
+    }
+    elsif ( -f "$hostname.err" ) {
+        return "$hostname.err"
+    }
+    elsif ( $datadir ne "" ) {
+        return "$datadir$hostname.err";
+    }
+    else {
+        return $file;
+    }
+}
+
 sub log_file_recommandations {
+    $myvar{'log_error'} = get_log_file_real_path( $myvar{'log_error'}, $myvar{'hostname'}, $myvar{'datadir'} );
     subheaderprint "Log file Recommendations";
     infoprint "Log file: "
       . $myvar{'log_error'} . "("
@@ -1168,14 +1202,16 @@ sub log_file_recommandations {
           . " is > 32Mb, you should analyze why or implement a rotation log strategy such as logrotate!";
     }
 
-    my @log_content = get_file_contents( $myvar{'log_error'} );
-
     my $numLi     = 0;
     my $nbWarnLog = 0;
     my $nbErrLog  = 0;
     my @lastShutdowns;
     my @lastStarts;
-    foreach my $logLi (@log_content) {
+
+    open( my $fh, '<', $myvar{'log_error'} ) or die "Can't open $myvar{'log_error'} for read: $!";
+
+    while ( my $logLi = <$fh> ) {
+        chomp $logLi;
         $numLi++;
         debugprint "$numLi: $logLi" if $logLi =~ /warning|error/i;
         $nbErrLog++                 if $logLi =~ /error/i;
@@ -1184,6 +1220,8 @@ sub log_file_recommandations {
           if $logLi =~ /Shutdown complete/ and $logLi !~ /Innodb/i;
         push @lastStarts, $logLi if $logLi =~ /ready for connections/;
     }
+    close $fh;
+
     if ( $nbWarnLog > 0 ) {
         badprint "$myvar{'log_error'} contains $nbWarnLog warning(s).";
         push @generalrec,
@@ -1678,7 +1716,7 @@ sub security_recommendations {
     # Looking for Empty Password
     if ( mysql_version_ge( 5, 5 ) ) {
         @mysqlstatlist = select_array
-"SELECT CONCAT(user, '\@', host) FROM mysql.user WHERE ($PASS_COLUMN_NAME = '' OR $PASS_COLUMN_NAME IS NULL) AND plugin NOT IN ('unix_socket', 'win_socket')";
+"SELECT CONCAT(user, '\@', host) FROM mysql.user WHERE ($PASS_COLUMN_NAME = '' OR $PASS_COLUMN_NAME IS NULL) AND plugin NOT IN ('unix_socket', 'win_socket', 'auth_pam_compat')";
     }
     else {
         @mysqlstatlist = select_array
@@ -2644,7 +2682,7 @@ sub mysql_stats {
 
         if ( defined $myvar{'query_cache_type'} ) {
             infoprint "Query Cache Buffers";
-            infoprint " +-- Query Cache: " 
+            infoprint " +-- Query Cache: "
               . $myvar{'query_cache_type'} . " - "
               . (
                 $myvar{'query_cache_type'} eq 0 |
@@ -5059,14 +5097,14 @@ having sum(if(c.column_key in ('PRI','UNI'), 1,0)) = 0"
           "wsrep_slave_threads is equal to 2, 3 or 4 times number of CPU(s)";
     }
 
-    if ( get_wsrep_option('gcs.limit') !=
+    if ( get_wsrep_option('gcs.fc_limit') !=
         get_wsrep_option('wsrep_slave_threads') * 5 )
     {
-        badprint "gcs.limit should be equal to 5 * wsrep_slave_threads";
-        push @adjvars, "gcs.limit= wsrep_slave_threads * 5";
+        badprint "gcs.fc_limit should be equal to 5 * wsrep_slave_threads";
+        push @adjvars, "gcs.fc_limit= wsrep_slave_threads * 5";
     }
     else {
-        goodprint "gcs.limit should be equal to 5 * wsrep_slave_threads";
+        goodprint "gcs.fc_limit should be equal to 5 * wsrep_slave_threads";
     }
 
     if ( get_wsrep_option('wsrep_slave_threads') > 1 ) {
@@ -5381,7 +5419,7 @@ sub mysql_innodb {
           . $myvar{'innodb_thread_concurrency'};
     }
 
-    # InnoDB Buffer Pull Size
+    # InnoDB Buffer Pool Size
     if ( $myvar{'innodb_file_per_table'} eq "ON" ) {
         goodprint "InnoDB File per table is activated";
     }
@@ -5390,7 +5428,7 @@ sub mysql_innodb {
         push( @adjvars, "innodb_file_per_table=ON" );
     }
 
-    # InnoDB Buffer Pull Size
+    # InnoDB Buffer Pool Size
     if ( $myvar{'innodb_buffer_pool_size'} > $enginestats{'InnoDB'} ) {
         goodprint "InnoDB buffer pool / data size: "
           . hr_bytes( $myvar{'innodb_buffer_pool_size'} ) . "/"
@@ -5415,12 +5453,15 @@ sub mysql_innodb {
           . hr_bytes( $myvar{'innodb_buffer_pool_size'} )
           . " should be equal 25%";
         push( @adjvars,
-                "innodb_log_file_size should be (="
-              . hr_bytes_rnd(
-                $myvar{'innodb_buffer_pool_size'} /
-                  $myvar{'innodb_log_files_in_group'} / 4
-              )
-              . ") if possible, so InnoDB total log files size equals to 25% of buffer pool size."
+              "innodb_log_file_size should be (="
+                . hr_bytes_rnd(
+                  $myvar{'innodb_buffer_pool_size'} /
+                    $myvar{'innodb_log_files_in_group'} / 4
+                )
+                . ") if possible, so InnoDB total log files size equals to 25% of buffer pool size."
+        );
+        push( @generalrec,
+"Read this before changing innodb_log_file_size and/or innodb_log_files_in_group: http://bit.ly/2wgkDvS"
         );
     }
     else {
@@ -5431,7 +5472,7 @@ sub mysql_innodb {
           . " should be equal 25%";
     }
 
-    # InnoDB Buffer Pull Instances (MySQL 5.6.6+)
+    # InnoDB Buffer Pool Instances (MySQL 5.6.6+)
     if ( defined( $myvar{'innodb_buffer_pool_instances'} ) ) {
 
         # Bad Value if > 64
@@ -5441,12 +5482,12 @@ sub mysql_innodb {
             push( @adjvars, "innodb_buffer_pool_instances (<= 64)" );
         }
 
-        # InnoDB Buffer Pull Size > 1Go
+        # InnoDB Buffer Pool Size > 1Go
         if ( $myvar{'innodb_buffer_pool_size'} > 1024 * 1024 * 1024 ) {
 
-# InnoDB Buffer Pull Size / 1Go = InnoDB Buffer Pull Instances limited to 64 max.
+# InnoDB Buffer Pool Size / 1Go = InnoDB Buffer Pool Instances limited to 64 max.
 
-            #  InnoDB Buffer Pull Size > 64Go
+            #  InnoDB Buffer Pool Size > 64Go
             my $max_innodb_buffer_pool_instances =
               int( $myvar{'innodb_buffer_pool_size'} / ( 1024 * 1024 * 1024 ) );
             $max_innodb_buffer_pool_instances = 64
@@ -5467,7 +5508,7 @@ sub mysql_innodb {
                   . $myvar{'innodb_buffer_pool_instances'} . "";
             }
 
-            # InnoDB Buffer Pull Size < 1Go
+            # InnoDB Buffer Pool Size < 1Go
         }
         else {
             if ( $myvar{'innodb_buffer_pool_instances'} != 1 ) {
@@ -6123,7 +6164,7 @@ __END__
 
 =head1 NAME
 
- MySQLTuner 1.7.3 - MySQL High Performance Tuning Script
+ MySQLTuner 1.7.4 - MySQL High Performance Tuning Script
 
 =head1 IMPORTANT USAGE GUIDELINES
 
@@ -6141,6 +6182,7 @@ You must provide the remote server's total memory when connecting to other serve
  --userenv <envvar>          Name of env variable which contains username to use for authentication
  --pass <password>           Password to use for authentication
  --passenv <envvar>          Name of env variable which contains password to use for authentication
+ --ssl-ca <path>             Path to public key
  --mysqladmin <path>         Path to a custom mysqladmin executable
  --mysqlcmd <path>           Path to a custom mysql executable
  --defaults-file <path>      Path to a custom .my.cnf
@@ -6380,4 +6422,3 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 # cperl-indent-level: 8
 # perl-indent-level: 8
 # End:
-
